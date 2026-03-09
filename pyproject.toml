@@ -1,0 +1,25 @@
+[project]
+name = "iterative_quality_assurance_pipeline_with_test_fix_loops"
+version = "0.1.0"
+description = "iterative_quality_assurance_pipeline_with_test_fix_loops using crewAI"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai[google-genai,litellm,tools]==1.9.3",
+    "google-generativeai>=0.8.6",
+]
+
+[project.scripts]
+iterative_quality_assurance_pipeline_with_test_fix_loops = "iterative_quality_assurance_pipeline_with_test_fix_loops.main:run"
+run_crew = "iterative_quality_assurance_pipeline_with_test_fix_loops.main:run"
+train = "iterative_quality_assurance_pipeline_with_test_fix_loops.main:train"
+replay = "iterative_quality_assurance_pipeline_with_test_fix_loops.main:replay"
+test = "iterative_quality_assurance_pipeline_with_test_fix_loops.main:test"
+run_with_trigger = "iterative_quality_assurance_pipeline_with_test_fix_loops.main:run_with_trigger"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "crew"
