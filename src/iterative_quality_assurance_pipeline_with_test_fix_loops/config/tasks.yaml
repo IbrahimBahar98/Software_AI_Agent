@@ -1,156 +1,175 @@
----
 analyze_github_repository_and_create_development_plan:
-  description: 'FIRST: Get repository information from {github_repo_url} to identify
-    the default branch (main/master). THEN: Check if a development branch already
-    exists remotely using GitHub Repository Inspector. If no development branch exists,
-    AUTOMATICALLY create a new branch named ''feature/comprehensive-qa-enhancement-{timestamp}''
-    from the default branch. NEXT: Use GitHub Branch Manager to CLONE the repository branch 
-    to the local ./workspace/repo directory. FINALLY: Analyze the repository structure, 
-    existing codebase, and architecture to create a comprehensive development plan 
-    integrated with the existing codebase.'
-  expected_output: 'Enhanced repository analysis including: 1) Repository information
-    and default branch identified, 2) Branch existence check and creation status for
-    {branch_name}, 3) Fallback instructions if branch creation fails, 4) Repository
-    structure and codebase analysis, 5) The ABSOLUTE paths to key files/directories 
-    identified, 6) Requirements analysis integrated with existing
-    code, 7) Task breakdown with clear priorities and dependencies, 8) Technical approach
-    considering current architecture, 9) Implementation timeline with branch management
-    strategy.'
+  description: >
+    FIRST: Get repository information from {github_repo_url} to identify the default branch.
+    THEN: Check if {branch_name} exists remotely using GitHub Repository Inspector.
+    If not, create it from {default_branch} using GitHub Branch Manager.
+    NEXT: Clone the branch to {repo_abs_path}.
+    THEN: Use bash_execution_tool to survey the repository:
+      - List all file extensions: find . -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -20
+      - List directory structure: find . -maxdepth 3 -type d | head -50
+      - Check for build/config files: ls -la *.json *.yaml *.yml *.toml *.xml *.gradle Makefile CMakeLists.txt 2>/dev/null
+      - For large files (>200 lines), read in chunks using head/tail/sed.
+    FINALLY: Analyze the codebase, detect languages, and create a development plan.
+    Use checkpoint_tool to save your analysis findings.
+  expected_output: >
+    1) Default branch confirmed, 2) {branch_name} creation status,
+    3) Languages detected with file counts, 4) Build system identified,
+    5) Existing test infrastructure (frameworks, CI configs),
+    6) Repository structure summary, 7) Key absolute file paths,
+    8) Development plan with priorities and dependencies,
+    9) Technical approach per language component.
   agent: repository_analyst_and_task_planner
+
 implement_code_based_on_development_plan:
-  description: 'CRITICAL: You MUST retrieve the ABSOLUTE repository path from the 
-    Repository Analyst. You MUST strictly prepend this absolute path to all 
-    filenames (e.g., ''C:\...\repo\package.json'') for all file reading, writing, 
-    or execution tools. Implement the code 
-    following the development plan and technical specifications in the local 
-    ./workspace/repo directory. Create and update files using file system tools. 
-    Write clean, well-documented code that meets all requirements.'
-  expected_output: 'Complete implementation including: 1) Source code files created/updated
-    in {branch_name} branch, 2) Configuration files if needed, 3) README with setup
-    and usage instructions, 4) Code documentation and inline comments, 5) Any necessary
-    dependencies and requirements files, 6) Confirmation of all commits to {branch_name}
-    branch.'
+  description: >
+    Working in {repo_abs_path}, implement code following the development plan.
+    All file paths MUST be absolute, rooted at {repo_abs_path}.
+    Create and update files using file_write_tool. Install dependencies as needed
+    using bash_execution_tool. Write clean, well-documented code that meets {requirements}.
+    Respect the language conventions detected in the analysis phase.
+  expected_output: >
+    1) Source code files created/updated with absolute paths listed,
+    2) Configuration files if needed, 3) Updated README,
+    4) Dependencies installed, 5) Code compiles/imports without errors.
   agent: software_developer
   context:
-  - analyze_github_repository_and_create_development_plan
+    - analyze_github_repository_and_create_development_plan
+
 design_comprehensive_testing_strategy:
-  description: Design a comprehensive testing strategy and detailed test plans for
-    the implemented code. Create test cases covering unit testing, integration testing,
-    and end-to-end scenarios. Define test data requirements, testing environments,
-    and success criteria.
-  expected_output: 'Complete testing strategy document including: 1) Testing approach
-    and methodologies, 2) Detailed test cases with steps and expected results, 3)
-    Test data requirements and setup instructions, 4) Coverage requirements and metrics,
-    5) Risk assessment and mitigation strategies, 6) Test environment specifications.'
+  description: >
+    Design a comprehensive, language-aware testing strategy for the implemented code.
+    FIRST: Use bash_execution_tool to detect:
+      - Languages present (file extensions)
+      - Existing test files and frameworks
+      - Package managers and build tools
+      - CI configuration via ci_config_reader_tool
+    THEN: For EACH detected language, design appropriate test cases:
+      - Python → pytest with fixtures and parametrize
+      - JavaScript/TypeScript → jest or vitest with describe/it blocks
+      - Java → JUnit 5 with @Test annotations
+      - C/C++ → Google Test or Catch2 with TEST macros
+      - Go → table-driven tests with testing.T
+      - Rust → #[test] functions with assert macros
+    Include installation commands for any missing test dependencies.
+  expected_output: >
+    1) Detected languages and their test ecosystems,
+    2) Test framework selection rationale per language,
+    3) Detailed test cases with steps and expected results,
+    4) Dependency installation commands (pip install pytest, npm i -D jest, etc.),
+    5) Coverage requirements per language component,
+    6) Test execution commands per language.
   agent: test_strategy_designer
   context:
-  - analyze_github_repository_and_create_development_plan
+    - analyze_github_repository_and_create_development_plan
+    - implement_code_based_on_development_plan
+
 implement_automated_test_suite:
-  description: 'CRITICAL: You MUST retrieve the ABSOLUTE repository path from the 
-    Repository Analyst. You MUST strictly prepend this absolute path to all 
-    filenames (e.g., ''C:\...\repo\package.json'') for all file reading, writing, 
-    or execution tools. Implement comprehensive 
-    automated test suite in the local ./workspace/repo directory. Create test files 
-    covering unit tests, integration tests, and end-to-end scenarios.'
-  expected_output: 'Complete test implementation committed to {branch_name} including:
-    1) Test files created and committed to branch, 2) Test execution scripts and configurations,
-    3) Test data and utilities, 4) Documentation for running tests, 5) All commits
-    made to working branch with proper commit messages.'
+  description: >
+    Working in {repo_abs_path}, implement the automated test suite designed by the
+    Test Strategy Designer. Use file_write_tool with absolute paths.
+    Write test files appropriate to each language:
+      - Python: tests/test_*.py files
+      - JavaScript: __tests__/*.test.js or *.spec.js files
+      - Java: src/test/java/**/*Test.java files
+      - C/C++: tests/*.cpp files with TEST macros
+      - Go: *_test.go files
+    Install test dependencies using bash_execution_tool before writing tests.
+    Ensure test configuration files exist (pytest.ini, jest.config.js, pom.xml test section, CMakeLists.txt with enable_testing, etc.).
+  expected_output: >
+    1) Test files created with absolute paths listed,
+    2) Test configuration files created/updated,
+    3) Test dependencies installed,
+    4) Test execution command documented per language,
+    5) Estimated coverage targets.
   agent: test_implementation_engineer
   context:
-  - design_comprehensive_testing_strategy
-  - implement_code_based_on_development_plan
-
+    - design_comprehensive_testing_strategy
+    - implement_code_based_on_development_plan
 
 lint_gate_task:
-  description: 'CRITICAL: You MUST retrieve the ABSOLUTE repository path from the 
-    Repository Analyst. You MUST strictly prepend this absolute path to all 
-    filenames (e.g., ''C:\...\repo\package.json'') for all file reading, writing, 
-    or execution tools. 
-    ENVIRONMENT SETUP & PRE-CHECK: FIRST, discover the codebase to identify required 
-    dependencies (e.g., npm install) along with any required linters. THEN, execute 
-    a fast static analysis using the installed linters against the local ./workspace/repo 
-    directory. catch syntax errors and missing imports. If linting fails, immediately 
-    route to the fix agent.'
-  expected_output: 'Linting report verifying that the code is syntactically sound, imports 
-    are resolvable, and type hints are broadly correct. If errors exist, a structured list 
-    of file paths and error messages.'
+  description: >
+    ENVIRONMENT SETUP: FIRST, use bash_execution_tool to install required linters
+    in {repo_abs_path} (e.g., pip install ruff mypy, npm i -D eslint, etc.).
+    THEN: Run lint_gate_tool which auto-detects the project language(s) and runs
+    appropriate linters. Review the output for syntax errors and import issues.
+    If critical errors are found, document them clearly for the fix agent.
+  expected_output: >
+    Linting report with: 1) Languages detected, 2) Linters run per language,
+    3) Pass/fail status per linter, 4) Structured error list if any.
   agent: test_execution_specialist
   context:
-  - implement_automated_test_suite
+    - implement_automated_test_suite
 
 execute_tests_and_analyze_results:
-  description: 'CRITICAL: You MUST retrieve the ABSOLUTE repository path from the 
-    Repository Analyst. You MUST strictly prepend this absolute path to all 
-    filenames (e.g., ''C:\...\repo\package.json'') for all file reading, writing, 
-    or execution tools. 
-    ENVIRONMENT SETUP & TEST EXECUTION: FIRST, ensure all required testing frameworks 
-    and project dependencies are installed in the environment using the Bash Execution Tool. 
-    THEN, execute the complete test suite systematically in the local ./workspace/repo directory 
-    and analyze all test results. Run unit tests, integration tests, and end-to-end tests 
-    locally. Collect execution metrics, identify any failures or issues, and document 
-    all findings with detailed analysis.'
-  expected_output: 'Comprehensive test execution report including: 1) Test execution
-    summary with pass/fail statistics, 2) Detailed results for each test category,
-    3) Coverage metrics and analysis, 4) Issue identification and categorization,
-    5) Performance metrics if applicable, 6) Recommendations for any identified problems.'
+  description: >
+    ENVIRONMENT SETUP: FIRST, ensure all testing dependencies are installed in
+    {repo_abs_path}. THEN: Run test_coverage_tool which auto-detects the project
+    language(s) and runs appropriate test frameworks with coverage.
+    Also run tests manually via bash_execution_tool if needed.
+    Collect metrics, identify failures, and document findings.
+  expected_output: >
+    1) Test execution summary per language with pass/fail counts,
+    2) Coverage percentage per language component,
+    3) Detailed failure analysis with file paths and line numbers,
+    4) Recommendations for fixes.
   agent: test_execution_specialist
   context:
-  - lint_gate_task
-generate_final_quality_assurance_report:
-  description: Generate a comprehensive final report covering the entire development
-    and testing process. Synthesize all previous outputs into a cohesive quality assurance
-    report with executive summary, technical details, and actionable recommendations.
-  expected_output: 'Complete QA report in professional format including: 1) Executive
-    summary of the project, 2) Requirements fulfillment analysis, 3) Code quality
-    assessment, 4) Testing coverage and results summary, 5) Risk analysis and mitigation
-    recommendations, 6) Quality metrics and KPIs, 7) Final recommendations and next
-    steps, 8) Appendices with detailed technical information.'
-  agent: qa_report_generator
-  context:
-  - analyze_github_repository_and_create_development_plan
-  - implement_code_based_on_development_plan
-  - design_comprehensive_testing_strategy
-  - implement_automated_test_suite
-  - execute_tests_and_analyze_results
+    - lint_gate_task
+    - implement_automated_test_suite
+    - implement_code_based_on_development_plan
+
 execute_iterative_test_fix_loop:
-  description: 'CRITICAL: You MUST retrieve the ABSOLUTE repository path from the 
-    Repository Analyst. You MUST strictly prepend this absolute path to all 
-    filenames (e.g., ''C:\...\repo\package.json'') for all file reading, writing, 
-    or execution tools. 
-    Execute continuous testing and improvement cycles until ALL issues are resolved. 
-    ITERATIVE PROCESS: 1) Verify test environment is fully set up. 2) Use Bash 
-    Execution Tool to run current test files in the local ./workspace/repo, 3) 
-    Identify code issues and missing tests through systematic review, 4) Implement 
-    fixes directly in local workspace files, 5) Validate fixes by re-running tests, 
-    6) Document each cycle''s improvements, 7) Repeat until quality standards are 
-    met. MAXIMUM ITERATIONS: 5.'
-  expected_output: 'Comprehensive iterative testing report including: 1) Summary of
-    all testing cycles performed, 2) Complete list of issues identified and resolved
-    in each cycle, 3) Fix implementations and validation results, 4) Final test execution
-    report with all tests passing, 5) Quality metrics meeting or exceeding thresholds,
-    6) Branch readiness certification for PR creation, 7) Detailed log of improvements
-    made through iterations.'
+  description: >
+    Execute continuous testing and improvement cycles in {repo_abs_path}.
+    ITERATIVE PROCESS:
+    1) Run tests via bash_execution_tool using the language-appropriate command
+    2) Analyze failures — read failing test output and source code
+    3) Implement fixes using file_write_tool or patch_apply_tool
+    4) Re-run tests to validate
+    5) Save progress with checkpoint_tool after each cycle
+    6) Repeat until all tests pass or {max_fix_iterations} cycles reached.
+    Use sequential thinking (mcp_bridge_tool) if stuck in a loop.
+  expected_output: >
+    1) Summary of each fix cycle, 2) Issues identified and resolved,
+    3) Final test execution report with all tests passing,
+    4) Quality metrics per language, 5) Branch readiness certification.
   agent: iterative_test_and_fix_specialist
   context:
-  - execute_tests_and_analyze_results
+    - execute_tests_and_analyze_results
+    - implement_code_based_on_development_plan
+    - implement_automated_test_suite
+
+generate_final_quality_assurance_report:
+  description: >
+    Generate a comprehensive final QA report. Save it to {repo_abs_path}/../QA_REPORT.md
+    using file_write_tool. Synthesize all previous outputs into a cohesive report
+    covering development, testing (per language), quality metrics, and recommendations.
+    If the report is long, write in sections to separate files.
+  expected_output: >
+    QA report file(s) saved with: 1) Executive summary, 2) Requirements analysis,
+    3) Per-language code quality assessment, 4) Test coverage summary per component,
+    5) Risk analysis, 6) Quality metrics, 7) Recommendations.
+  agent: qa_report_generator
+  context:
+    - analyze_github_repository_and_create_development_plan
+    - implement_code_based_on_development_plan
+    - design_comprehensive_testing_strategy
+    - implement_automated_test_suite
+    - execute_tests_and_analyze_results
+    - execute_iterative_test_fix_loop
+
 create_github_issues_and_track_progress:
-  description: 'FIRST: Verify that iterative test-fix cycles have been completed by
-    reading the iterative testing report to confirm ALL issues are resolved and quality
-    standards met. THEN: Use GitHub Branch Manager to COMMIT and PUSH all changes from the 
-    local ./workspace/repo directory to the remote feature branch with a consolidated 
-    commit message. NEXT: Create a comprehensive pull request from the feature branch to
-    {default_branch} with detailed description of changes, iterative improvements made,
-    and final quality certification. IMPORTANT: You MUST use the exact repository URL
-    provided: {github_repo_url}. Do NOT assume or hallucinate the organization name.
-    FINALLY: Create GitHub issues for any future enhancements identified during the process.'
-  expected_output: 'Complete GitHub integration with robust error handling including:
-    1) Branch validation status with environment setup instructions if needed, 2)
-    Pull request creation status with specific error resolution steps, 3) Multiple
-    GitHub issues created with issue numbers and direct links, 4) Clear documentation
-    of authentication requirements and setup steps, 5) Fallback instructions when
-    API operations fail, 6) Complete project roadmap with prioritized next steps.'
+  description: >
+    FIRST: Verify the iterative fix loop completed successfully.
+    THEN: Use GitHub Branch Manager to COMMIT and PUSH all changes from
+    {repo_abs_path} to {branch_name} with a consolidated commit message.
+    NEXT: Create a pull request from {branch_name} to {default_branch}.
+    IMPORTANT: Use the exact URL: {github_repo_url}. Do NOT hallucinate org names.
+    FINALLY: Create GitHub issues for future enhancements identified.
+  expected_output: >
+    1) Commit and push status, 2) Pull request created with URL,
+    3) GitHub issues created with links, 4) Roadmap for next steps.
   agent: github_integration_specialist
   context:
-  - execute_iterative_test_fix_loop
-  - generate_final_quality_assurance_report
+    - execute_iterative_test_fix_loop
+    - generate_final_quality_assurance_report
