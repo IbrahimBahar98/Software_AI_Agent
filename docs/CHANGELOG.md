@@ -2,6 +2,37 @@
 
 All notable changes to the Iterative Quality Assurance Pipeline will be documented in this file.
 
+## [1.3.0] - 2026-03-12
+
+### Added: Unified Configuration & Security Hardening
+
+This update centralizes project configuration and secures sensitive API keys through environment variables.
+
+#### 1. API Key Externalization
+- **File**: `.env`, `.env.example`, `src/iterative_quality_assurance_pipeline_with_test_fix_loops/crew.py`
+- **Change**: Moved `DASHSCOPE_API_KEY` from source code to `.env`.
+- **Detail**: The crew now reads the API key using `os.getenv()`, preventing accidental leaks in Git.
+
+#### 2. Centralized Configuration System
+- **File**: `src/iterative_quality_assurance_pipeline_with_test_fix_loops/config.py`
+- **Change**: Established a single source of truth for all pipeline constants.
+- **Detail**: Workspace paths (REPO_DIR, WORKSPACE_DIR), model identifiers (MODEL_HEAVY, MODEL_LIGHT), and timeouts are now managed centrally.
+
+#### 3. Workspace Isolation (Git Hardening)
+- **File**: `.gitignore`
+- **Change**: Added `workspace/` to Git ignore list and untracked existing files.
+- **Detail**: The temporary working directory is now strictly excluded from the repository index.
+
+#### 4. A2A (Agent-to-Agent) Integration
+- **File**: `src/iterative_quality_assurance_pipeline_with_test_fix_loops/tools/a2a_tool.py`
+- **Change**: Integrated A2A server for specialized discovery and testing sub-agents.
+- **Detail**: Agents now leverage a background A2A server for deep repository analysis and automated test execution.
+
+#### 5. Safety & Reliability
+- **File**: `src/iterative_quality_assurance_pipeline_with_test_fix_loops/config/tasks.yaml`
+- **Change**: Added explicit `max_iterations` to fix cycles and `max_execution_time` to all agents.
+
+
 ## [1.2.0] - 2026-03-08
 
 ### Added: Generic Self-Healing Terminal & Absolute Path Anchoring

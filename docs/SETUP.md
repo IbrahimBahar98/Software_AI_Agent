@@ -12,11 +12,14 @@ Follow these steps to configure and run the Iterative Quality Assurance Pipeline
 The pipeline requires a model provider API key, configured via a `.env` file in the project root.
 
 ### A. Model Provider Key (Alibaba Cloud Model Studio)
-The pipeline is currently configured to use `openai/qwen-plus` via the DashScope API. 
+The pipeline is strictly configured to read keys from the environment. **NEVER** hardcode keys in `crew.py`.
 Create a `.env` file (copy from `.env.example`) and add your key:
 ```env
 DASHSCOPE_API_KEY=sk-your_api_key_here
 ```
+
+### B. Workspace Notice
+The `./workspace` folder is automatically handled and is **ignored by Git** to maintain a clean repository.
 
 ### B. GitHub Authentication (OAuth Redirect Flow - VS Code Style)
 The pipeline uses a seamless, browser-based authentication flow. When you run the script, it will automatically open your default browser to GitHub to authorize the project.

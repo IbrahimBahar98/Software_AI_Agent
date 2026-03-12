@@ -17,16 +17,10 @@
 
 ---
 
-### 2. The Fix Loop Has No Hard Guard or Escape Hatch
+### 2. The Fix Loop Has No Hard Guard or Escape Hatch — FIXED
 
-```yaml
-# tasks.yaml line 84-101 — no max_iterations set
-# crew.py line 176 — max_iter=40 (agent-level, NOT task-level)
-```
-
-- `max_iter=40` on the agent only caps tool calls per task, **not loop re-entries**. The task description says "repeat until… zero critical issues" — if the LLM hallucinates, the loop will **never exit**.
-- No retry budget, no exponential back-off, no human-in-the-loop checkpoint.
-- **Impact**: Runaway API costs, pipeline stalls.
+- Added `max_iterations: 5` to task-level configuration.
+- Combined with agent-level `max_iter` to prevent runaway loops.
 
 ---
 
@@ -45,18 +39,10 @@ result = subprocess.run(command, shell=True, ...)
 
 ---
 
-### 4. Hardcoded LLM & API Key in Source Code
+### 4. Hardcoded LLM & API Key in Source Code — FIXED
 
-```python
-# crew.py line 18-22
-local_llm = LLM(
-    model="openai/qwen-plus",
-    api_key="sk-099f1a284aef4f3eb9c759bc578e7603",  # ← LEAKED
-)
-```
-
-- Single model for all 8 agents — heavy reasoning and trivial file writes cost the same.
-- API key in source code. A `git push` leaks it to the world.
+- API keys and model configurations moved to `.env`.
+- `DASHSCOPE_API_KEY` is no longer committed to source code.
 
 ---
 
@@ -118,17 +104,10 @@ max_execution_time=None
 
 ---
 
-### 12. Hardcoded `./workspace` Path Everywhere
+### 12. Hardcoded ./workspace Path Everywhere — FIXED
 
-The workspace path `"./workspace"` is hardcoded in:
-
-- `BashExecutionTool.__init__()` default
-- `FileWriteTool.__init__()` default
-- `GitHubBranchContentManager` input schema default
-- `agents.yaml` goal strings
-- `tasks.yaml` description strings
-
-No single source of truth. If you need to change the workspace path, you must update ~10 locations.
+- Centralized in `config.py`.
+- Shared constants used across tools, agents, and tasks.
 
 ---
 
@@ -138,14 +117,9 @@ All tools return error strings (e.g., `"❌ Error: ..."`) instead of raising exc
 
 ---
 
-### 14. `reasoning=False` on All Agents
+### 14. reasoning=False on All Agents — FIXED
 
-```python
-# crew.py — every agent has:
-reasoning=False
-```
-
-- CrewAI's reasoning mode enables chain-of-thought before tool calls. With it disabled, agents are more prone to incorrect tool arguments and hallucinated parameters — especially damaging for the fix agent in a loop.
+- Enabled `reasoning=True` on key agents for better chain-of-thought processing.
 
 ---
 

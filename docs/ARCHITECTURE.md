@@ -7,12 +7,13 @@ The **Iterative Quality Assurance Pipeline** is built on top of the [CrewAI](htt
 1. **Crew (`crew.py`)**: The central orchestrator. It defines the AI agents, the tasks they perform, and the sequential process by which they operate.
 2. **Agents (`config/agents.yaml`)**: The "employees" of the system. Each agent has a specific role (e.g., Software Developer, QA Analyst), goal, backstory, and a set of allowed tools.
 3. **Tasks (`config/tasks.yaml`)**: The specific jobs assigned to the agents. Tasks define the expected output and sequence.
-4. **Tools (`tools/`)**: Custom Python classes that allow the agents to interact with the outside world (e.g., executing Bash commands, writing files, and hitting the GitHub API).
-5. **LLM Integration**: The pipeline uses an OpenAI-compatible API endpoint (configured out-of-the-box for Alibaba Cloud Model Studio using Qwen models), allowing it to reasoning over complex tasks and generate code.
+4. **Tools (`tools/`)**: Custom Python classes that allow the agents to interact with the outside world.
+5. **A2A Server (`src/a2a/`)**: Background server providing discovery, testing, and fixing capabilities for agents.
+6. **LLM Integration**: The pipeline uses an OpenAI-compatible API endpoint (configured for DashScope/Qwen via `.env`), managing LLM usage centrally from `config.py`.
 
 ## Execution Flow (The Process)
 
-The process runs using CrewAI's `Process.hierarchical` strategy. A Manager Agent (using a lightweight LLM like Qwen-Turbo) reviews requirements and dynamically routes tasks to specialized agents (who may use heavier or lighter reasoning models depending on the complexity of their role) to optimize speed and cost while supporting parallel execution.
+The process runs using CrewAI's `Process.sequential` strategy. Agents work in a defined sequence, sharing state through the `CheckpointTool` and leveraging a background A2A (Agent-to-Agent) server for specialized repository tasks.
 
 1. **Setup & Planning**: The system clones the target GitHub repository into a local `./workspace` directory and creates a development plan, analyzing existing CI configuration via `ci_config_reader_tool`.
 2. **Implementation**: Code modifications are made directly to the local files.
