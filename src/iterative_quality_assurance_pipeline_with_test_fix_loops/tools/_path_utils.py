@@ -5,13 +5,13 @@ from iterative_quality_assurance_pipeline_with_test_fix_loops.config import REPO
 
 def normalize_workspace_path(file_path: str, base_dir: str = None) -> str:
     """Normalize a file path to be safely within the workspace.
-    
+
     Handles:
     - Absolute paths that include the workspace/repo prefix
     - Relative paths with redundant workspace/repo prefixes
     - Windows backslashes
     - Dotfiles (preserves leading dots)
-    
+
     Returns the full absolute path within base_dir.
     """
     if base_dir is None:
@@ -27,14 +27,12 @@ def normalize_workspace_path(file_path: str, base_dir: str = None) -> str:
         if norm.startswith(abs_base):
             clean = os.path.relpath(norm, abs_base)
         else:
-            # Try to extract a relative component
             for marker in ["/workspace/repo/", "/workspace/", "/repo/"]:
                 idx = clean.find(marker)
                 if idx != -1:
                     clean = clean[idx + len(marker):]
                     break
             else:
-                # Can't determine relative path — use as-is, security check below will catch escapes
                 clean = os.path.relpath(norm, abs_base) if norm.startswith(abs_base) else clean
 
     # Remove leading ./ (but NOT single dots that are part of filenames)
@@ -50,16 +48,37 @@ def normalize_workspace_path(file_path: str, base_dir: str = None) -> str:
 
     clean = clean.strip("/")
 
-    # Build full path
     full_path = os.path.normpath(os.path.join(base_dir, clean))
-
     return full_path
 
 
-def validate_path_in_workspace(full_path: str, base_dir: str = None) -> bool:
-    """Ensure the resolved path doesn't escape the workspace."""
+def validate_path_in_workspace(
+    full_path: str,
+    base_dir: str = None,
+    allow_workspace_parent: bool = False,
+) -> bool:
+    """Ensure the resolved path doesn't escape the workspace.
+
+    Args:
+        full_path: The path to validate.
+        base_dir: The base directory to check against. Defaults to REPO_DIR.
+        allow_workspace_parent: If True, also allows paths within WORKSPACE_DIR
+                                (e.g., for QA_REPORT.md written to repo/../).
+    """
     if base_dir is None:
         base_dir = REPO_DIR
-    abs_base = os.path.abspath(base_dir)
+
     abs_target = os.path.abspath(full_path)
-    return abs_target.startswith(abs_base)
+
+    # Check against base_dir first
+    abs_base = os.path.abspath(base_dir)
+    if abs_target.startswith(abs_base + os.sep) or abs_target == abs_base:
+        return True
+
+    # Optionally allow WORKSPACE_DIR (parent of REPO_DIR)
+    if allow_workspace_parent:
+        abs_workspace = os.path.abspath(WORKSPACE_DIR)
+        if abs_target.startswith(abs_workspace + os.sep) or abs_target == abs_workspace:
+            return True
+
+    return False

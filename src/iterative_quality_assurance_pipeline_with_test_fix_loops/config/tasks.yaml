@@ -1,63 +1,161 @@
+# ─────────────────────────────────────────────────────────
+# TASKS — Discovery-driven, checkpoint-connected
+#
+# Every task:
+#   1. Reads checkpoint FIRST (except task 1)
+#   2. Does its work
+#   3. Saves results to checkpoint LAST
+#
+# This creates a shared knowledge chain across all agents.
+# ─────────────────────────────────────────────────────────
+
 analyze_github_repository_and_create_development_plan:
   description: >
-    FIRST: Get repository information from {github_repo_url} to identify the default branch.
-    THEN: Check if {branch_name} exists remotely using GitHub Repository Inspector.
-    If not, create it from {default_branch} using GitHub Branch Manager.
-    NEXT: Clone the branch to {repo_abs_path}.
-    THEN: Use bash_execution_tool to survey the repository:
-      - List all file extensions: find . -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -20
-      - List directory structure: find . -maxdepth 3 -type d | head -50
-      - Check for build/config files: ls -la *.json *.yaml *.yml *.toml *.xml *.gradle Makefile CMakeLists.txt 2>/dev/null
-      - For large files (>200 lines), read in chunks using head/tail/sed.
-    FINALLY: Analyze the codebase, detect languages, and create a development plan.
-    Use checkpoint_tool to save your analysis findings.
+    STEP 1 — CLONE REPOSITORY (use github_branch_content_manager ONLY):
+      1a. Get repo info:
+        Action: github_branch_content_manager
+        Action Input: {"operation": "get_repo_info", "repository_url": "{github_repo_url}"}
+      1b. Create branch:
+        Action: github_branch_content_manager
+        Action Input: {"operation": "create_branch", "repository_url": "{github_repo_url}", "branch_name": "{branch_name}"}
+      1c. Clone to local:
+        Action: github_branch_content_manager
+        Action Input: {"operation": "clone_repo", "repository_url": "{github_repo_url}", "source_branch": "{branch_name}"}
+      1d. Verify clone:
+        Action: bash_execution_tool
+        Action Input: {"command": "cd {repo_abs_path} && git branch --show-current"}
+        Expected: "{branch_name}"
+
+      DO NOT use Invoke-WebRequest, curl, or zip downloads.
+      DO NOT skip any of these steps.
+
+    STEP 2 — DISCOVER ENVIRONMENT AND REPOSITORY:
+      Use a2a_tool:
+        agent_name: "discovery"
+        message: "Discover environment and repository"
+        data: "{\"repo_dir\": \"{repo_abs_path}\"}"
+
+      If a2a_tool fails, discover manually using bash_execution_tool:
+        - List all file extensions and counts
+        - Read root config files (package.json, pyproject.toml, etc.)
+        - Check available commands (python --version, node --version, etc.)
+        - List test directories
+        - Read CI workflow files
+
+    STEP 3 — INTERPRET DISCOVERY RESULTS:
+      From the raw data, determine:
+        - What languages are in the repo (from extensions + config content)
+        - What build system is used (from config files)
+        - What test framework exists (from test file content + configs)
+        - What CI/CD is configured (from workflow files)
+        - What tools are available on this machine (from PATH scan)
+
+    STEP 4 — SAVE DISCOVERY TO CHECKPOINT:
+      Use checkpoint_tool:
+        operation: "save"
+        phase: "discovery"
+        data: >
+          JSON object with:
+          {
+            "languages": {"python": 45, "javascript": 12},
+            "build_systems": ["pip", "npm"],
+            "test_frameworks": {"python": "pytest", "javascript": "jest"},
+            "available_tools": {"pytest": "8.1.0", "node": "20.0.0"},
+            "test_directories": ["tests", "__tests__"],
+            "ci_systems": ["github-actions"],
+            "repo_abs_path": "{repo_abs_path}"
+          }
+
+    STEP 5 — CREATE DEVELOPMENT PLAN:
+      Based on discoveries and {requirements}, create a plan.
+      Save to checkpoint:
+        phase: "development_plan"
+        data: the plan as structured JSON
+
   expected_output: >
-    1) Default branch confirmed, 2) {branch_name} creation status,
-    3) Languages detected with file counts, 4) Build system identified,
-    5) Existing test infrastructure (frameworks, CI configs),
-    6) Repository structure summary, 7) Key absolute file paths,
-    8) Development plan with priorities and dependencies,
-    9) Technical approach per language component.
+    1) Repository cloned to {repo_abs_path},
+    2) Environment discovered (OS, available tools with versions),
+    3) Repository analyzed (languages with file counts, build systems,
+       test frameworks, CI configs),
+    4) All discovery data saved to checkpoint,
+    5) Development plan saved to checkpoint.
   agent: repository_analyst_and_task_planner
 
 implement_code_based_on_development_plan:
   description: >
-    Working in {repo_abs_path}, implement code following the development plan.
-    All file paths MUST be absolute, rooted at {repo_abs_path}.
-    Create and update files using file_write_tool. Install dependencies as needed
-    using bash_execution_tool. Write clean, well-documented code that meets {requirements}.
-    Respect the language conventions detected in the analysis phase.
+    STEP 1 — READ CHECKPOINT:
+      Use checkpoint_tool (operation='load') to get:
+        - Discovery data (languages, tools, build systems)
+        - Development plan
+
+    STEP 2 — IMPLEMENT CODE:
+      Follow the development plan from checkpoint.
+      Use file_write_tool to create/update files.
+      All paths must be absolute: {repo_abs_path}/...
+
+    STEP 3 — VERIFY CODE:
+      Use bash_execution_tool to verify the code is valid.
+      Choose verification command based on discovered languages:
+        - Check syntax, imports, compilation
+        - Install production dependencies if needed
+
+    STEP 4 — SAVE TO CHECKPOINT:
+      Use checkpoint_tool:
+        phase: "implementation"
+        data: JSON listing files created/modified, dependencies installed
+
   expected_output: >
-    1) Source code files created/updated with absolute paths listed,
-    2) Configuration files if needed, 3) Updated README,
-    4) Dependencies installed, 5) Code compiles/imports without errors.
+    1) Code files created/updated (absolute paths listed),
+    2) Dependencies installed if needed,
+    3) Code verified (compiles/imports cleanly),
+    4) Implementation details saved to checkpoint.
   agent: software_developer
   context:
     - analyze_github_repository_and_create_development_plan
 
 design_comprehensive_testing_strategy:
   description: >
-    Design a comprehensive, language-aware testing strategy for the implemented code.
-    FIRST: Use bash_execution_tool to detect:
-      - Languages present (file extensions)
-      - Existing test files and frameworks
-      - Package managers and build tools
-      - CI configuration via ci_config_reader_tool
-    THEN: For EACH detected language, design appropriate test cases:
-      - Python → pytest with fixtures and parametrize
-      - JavaScript/TypeScript → jest or vitest with describe/it blocks
-      - Java → JUnit 5 with @Test annotations
-      - C/C++ → Google Test or Catch2 with TEST macros
-      - Go → table-driven tests with testing.T
-      - Rust → #[test] functions with assert macros
-    Include installation commands for any missing test dependencies.
+    STEP 1 — READ CHECKPOINT:
+      Use checkpoint_tool (operation='load') to get:
+        - Discovery data (languages, frameworks, test dirs, CI config)
+        - Implementation details (what files were created)
+
+    STEP 2 — INSPECT EXISTING TEST INFRASTRUCTURE:
+      Use bash_execution_tool to examine:
+        - Contents of test directories
+        - Existing test configuration files
+        - Test dependencies already installed
+      Use ci_config_reader_tool if CI configs were detected.
+
+    STEP 3 — DESIGN TEST STRATEGY:
+      For EACH detected language, design:
+        - Test framework to use (prefer what's already detected/installed)
+        - Test file naming and location conventions
+        - Specific test cases (function names, assertions)
+        - Dependencies to install (only if missing)
+        - Exact commands to run tests and coverage
+
+    STEP 4 — SAVE TO CHECKPOINT:
+      Use checkpoint_tool:
+        phase: "test_strategy"
+        data: JSON with per-language test plans:
+          {
+            "python": {
+              "framework": "pytest",
+              "install_cmd": "pip install pytest pytest-cov",
+              "test_cmd": "pytest -v",
+              "coverage_cmd": "pytest --cov=. --cov-report=term -v",
+              "test_files_to_create": ["tests/test_main.py"],
+              "test_cases": [...]
+            },
+            "javascript": { ... }
+          }
+
   expected_output: >
-    1) Detected languages and their test ecosystems,
-    2) Test framework selection rationale per language,
-    3) Detailed test cases with steps and expected results,
-    4) Dependency installation commands (pip install pytest, npm i -D jest, etc.),
-    5) Coverage requirements per language component,
-    6) Test execution commands per language.
+    1) Per-language test strategy with framework selection rationale,
+    2) Test cases specified with descriptions,
+    3) Install and run commands per language,
+    4) Strategy saved to checkpoint.
   agent: test_strategy_designer
   context:
     - analyze_github_repository_and_create_development_plan
@@ -65,110 +163,276 @@ design_comprehensive_testing_strategy:
 
 implement_automated_test_suite:
   description: >
-    Working in {repo_abs_path}, implement the automated test suite designed by the
-    Test Strategy Designer. Use file_write_tool with absolute paths.
-    Write test files appropriate to each language:
-      - Python: tests/test_*.py files
-      - JavaScript: __tests__/*.test.js or *.spec.js files
-      - Java: src/test/java/**/*Test.java files
-      - C/C++: tests/*.cpp files with TEST macros
-      - Go: *_test.go files
-    Install test dependencies using bash_execution_tool before writing tests.
-    Ensure test configuration files exist (pytest.ini, jest.config.js, pom.xml test section, CMakeLists.txt with enable_testing, etc.).
+    STEP 1 — READ CHECKPOINT:
+      Use checkpoint_tool (operation='load') to get:
+        - Test strategy (frameworks, test cases, file names)
+        - Discovery data (what's installed)
+
+    STEP 2 — INSTALL TEST DEPENDENCIES:
+      From the test strategy, run install commands via bash_execution_tool.
+      Verify each installation succeeded.
+
+    STEP 3 — CREATE TEST CONFIGURATION:
+      If the test strategy requires config files (pytest.ini, jest.config.js, etc.),
+      create them using file_write_tool.
+
+    STEP 4 — WRITE TEST FILES:
+      For each test file in the strategy:
+        - Use file_write_tool with absolute path: {repo_abs_path}/...
+        - Follow the framework conventions
+        - Include all test cases from the strategy
+
+    STEP 5 — VERIFY TEST SYNTAX:
+      Use bash_execution_tool to check test files are valid:
+        - Python: python -m py_compile {repo_abs_path}/tests/test_file.py
+        - JS: node --check {repo_abs_path}/test/file.test.js
+
+    STEP 6 — SAVE TO CHECKPOINT:
+      Use checkpoint_tool:
+        phase: "test_implementation"
+        data: JSON with:
+          {
+            "test_files_created": [...],
+            "config_files_created": [...],
+            "dependencies_installed": [...],
+            "test_commands": {"python": "pytest -v", "javascript": "npm test"}
+          }
+
   expected_output: >
-    1) Test files created with absolute paths listed,
-    2) Test configuration files created/updated,
-    3) Test dependencies installed,
-    4) Test execution command documented per language,
-    5) Estimated coverage targets.
+    1) Test dependencies installed,
+    2) Test configuration files created,
+    3) Test files created (absolute paths listed),
+    4) Tests verified syntactically valid,
+    5) Implementation saved to checkpoint.
   agent: test_implementation_engineer
   context:
     - design_comprehensive_testing_strategy
     - implement_code_based_on_development_plan
 
-lint_gate_task:
+execute_lint_and_tests:
   description: >
-    ENVIRONMENT SETUP: FIRST, use bash_execution_tool to install required linters
-    in {repo_abs_path} (e.g., pip install ruff mypy, npm i -D eslint, etc.).
-    THEN: Run lint_gate_tool which auto-detects the project language(s) and runs
-    appropriate linters. Review the output for syntax errors and import issues.
-    If critical errors are found, document them clearly for the fix agent.
-  expected_output: >
-    Linting report with: 1) Languages detected, 2) Linters run per language,
-    3) Pass/fail status per linter, 4) Structured error list if any.
-  agent: test_execution_specialist
-  context:
-    - implement_automated_test_suite
+    STEP 1 — READ CHECKPOINT:
+      Use checkpoint_tool (operation='load') to get:
+        - Discovery data (available linters, test frameworks)
+        - Test implementation (test commands to run)
 
-execute_tests_and_analyze_results:
-  description: >
-    ENVIRONMENT SETUP: FIRST, ensure all testing dependencies are installed in
-    {repo_abs_path}. THEN: Run test_coverage_tool which auto-detects the project
-    language(s) and runs appropriate test frameworks with coverage.
-    Also run tests manually via bash_execution_tool if needed.
-    Collect metrics, identify failures, and document findings.
+    STEP 2 — LINT PHASE:
+      Option A: Use a2a_tool → linter agent:
+        agent_name: "linter"
+        message: "Run all available linters"
+        data: "{\"repo_dir\": \"{repo_abs_path}\", \"auto_detect\": true, \"available_tools\": <from_checkpoint>, \"languages\": <from_checkpoint>}"
+      Option B: Run linters manually via bash_execution_tool
+        using linter commands you determined from discovery data.
+
+    STEP 3 — TEST PHASE:
+      Run tests using commands from checkpoint.
+      For each language:
+        cd {repo_abs_path} && <test_command>
+      Capture full stdout and stderr.
+
+      Alternatively, use a2a_tool → test-runner agent:
+        agent_name: "test-runner"
+        data: {{"repo_dir": "{repo_abs_path}", "with_coverage": true}}
+
+    STEP 4 — ANALYZE RESULTS:
+      For each failure, extract:
+        - Test name
+        - File path and line number
+        - Error message
+        - Error type (assertion, import, syntax, runtime)
+      Count: total tests, passed, failed, skipped.
+      Note coverage percentage if available.
+
+    STEP 5 — SAVE TO CHECKPOINT:
+      Use checkpoint_tool:
+        phase: "test_execution"
+        data: JSON with:
+          {
+            "lint_results": {"ruff": {"passed": true}, "eslint": {"passed": false, "errors": "..."}},
+            "test_results": {
+              "python": {"passed": 10, "failed": 2, "total": 12, "command": "pytest -v"},
+              "javascript": {"passed": 5, "failed": 0, "total": 5}
+            },
+            "failures": [
+              {"file": "src/auth.py", "line": 42, "test": "test_login", "error": "ImportError..."},
+              ...
+            ],
+            "coverage": {"python": 75.2, "javascript": 88.0},
+            "all_passing": false
+          }
+
   expected_output: >
-    1) Test execution summary per language with pass/fail counts,
-    2) Coverage percentage per language component,
-    3) Detailed failure analysis with file paths and line numbers,
-    4) Recommendations for fixes.
+    1) Lint results per linter (pass/fail with errors),
+    2) Test results per language (pass/fail counts),
+    3) Structured failure list with file/line/error,
+    4) Coverage metrics,
+    5) All results saved to checkpoint.
   agent: test_execution_specialist
   context:
-    - lint_gate_task
     - implement_automated_test_suite
     - implement_code_based_on_development_plan
 
 execute_iterative_test_fix_loop:
   description: >
-    Execute continuous testing and improvement cycles in {repo_abs_path}.
-    ITERATIVE PROCESS:
-    1) Run tests via bash_execution_tool using the language-appropriate command
-    2) Analyze failures — read failing test output and source code
-    3) Implement fixes using file_write_tool or patch_apply_tool
-    4) Re-run tests to validate
-    5) Save progress with checkpoint_tool after each cycle
-    6) Repeat until all tests pass or {max_fix_iterations} cycles reached.
-    Use sequential thinking (mcp_bridge_tool) if stuck in a loop.
+    Execute up to {max_fix_iterations} test-fix cycles.
+
+    STEP 1 — READ CHECKPOINT:
+      Load test_execution results.
+      If "all_passing" is true → SKIP this task, save checkpoint and exit.
+      If failures exist → proceed to fix cycles.
+
+    STEP 2 — FOR EACH CYCLE (N = 1 to {max_fix_iterations}):
+
+      Print: "=== FIX CYCLE N of {max_fix_iterations} ==="
+
+      2a. RUN TESTS:
+        Use bash_execution_tool with the test command from checkpoint.
+        Or use a2a_tool → test-runner.
+
+      2b. CHECK RESULTS:
+        If all tests pass → STOP. Save checkpoint:
+          phase: "fix_complete"
+          data: {{"all_passing": true, "cycles_used": N}}
+
+      2c. SELECT ONE FAILURE:
+        Pick the FIRST failure from the results.
+        If this file has failed 3+ cycles → SKIP it, pick the next one.
+        If all failures are stuck → STOP with partial report.
+
+      2d. READ SOURCE CODE:
+        Use file_read_tool to read the failing file around the error line.
+        Also read the test file to understand what's expected.
+
+      2e. DIAGNOSE ROOT CAUSE:
+        Understand WHY the test fails.
+        The fix should be in the SOURCE code, not the test.
+
+      2f. APPLY FIX:
+        Use file_write_tool to write the corrected source file.
+        Make the SMALLEST change that fixes the issue.
+
+      2g. VERIFY FIX:
+        Re-run the specific failing test if possible.
+        Or re-run the full suite.
+
+      2h. SAVE CYCLE PROGRESS:
+        Use checkpoint_tool:
+          phase: "fix_cycle_N"
+          data: {{"cycle": N, "fixed": "description", "remaining_failures": X}}
+
+      2i. CONTINUE to next cycle.
+
+    STEP 3 — AFTER ALL CYCLES:
+      Save final checkpoint:
+        phase: "fix_loop_complete"
+        data: summary of all cycles, what's fixed, what remains.
+
   expected_output: >
-    1) Summary of each fix cycle, 2) Issues identified and resolved,
-    3) Final test execution report with all tests passing,
-    4) Quality metrics per language, 5) Branch readiness certification.
+    1) Per-cycle summary (what was fixed in each),
+    2) Final test results after last cycle,
+    3) List of remaining failures (if any),
+    4) Total cycles used vs maximum,
+    5) All progress saved to checkpoint.
   agent: iterative_test_and_fix_specialist
   context:
-    - execute_tests_and_analyze_results
+    - execute_lint_and_tests
     - implement_code_based_on_development_plan
     - implement_automated_test_suite
 
 generate_final_quality_assurance_report:
   description: >
-    Generate a comprehensive final QA report. Save it to {repo_abs_path}/../QA_REPORT.md
-    using file_write_tool. Synthesize all previous outputs into a cohesive report
-    covering development, testing (per language), quality metrics, and recommendations.
-    If the report is long, write in sections to separate files.
+    STEP 1 — READ ALL CHECKPOINTS:
+      Use checkpoint_tool (operation='summary') for overview.
+      Use checkpoint_tool (operation='load') for full details.
+
+    STEP 2 — WRITE REPORT:
+      Use file_write_tool to save report:
+        file_path: "{repo_abs_path}/../QA_REPORT.md"
+
+      Report sections:
+        # QA Report — {requirements}
+        ## Executive Summary
+        ## Environment (OS, tools, languages discovered)
+        ## Development (code implemented, files changed)
+        ## Test Strategy (per-language approach)
+        ## Test Implementation (test files, frameworks)
+        ## Lint Results (per-linter pass/fail)
+        ## Test Results (per-language pass/fail/coverage)
+        ## Fix Cycles (what was fixed, cycles used)
+        ## Quality Metrics (tests passing, coverage %, lint clean)
+        ## Recommendations (remaining issues, next steps)
+
+    STEP 3 — SAVE CHECKPOINT:
+      phase: "report_generated"
+
+    If the report exceeds 30KB, split into:
+      QA_REPORT.md (summary + key metrics)
+      QA_REPORT_DETAILS.md (full test output, fix cycle details)
+
   expected_output: >
-    QA report file(s) saved with: 1) Executive summary, 2) Requirements analysis,
-    3) Per-language code quality assessment, 4) Test coverage summary per component,
-    5) Risk analysis, 6) Quality metrics, 7) Recommendations.
+    1) QA_REPORT.md file saved to {repo_abs_path}/../,
+    2) Comprehensive coverage of all pipeline phases,
+    3) Actionable recommendations.
   agent: qa_report_generator
   context:
     - analyze_github_repository_and_create_development_plan
     - implement_code_based_on_development_plan
     - design_comprehensive_testing_strategy
     - implement_automated_test_suite
-    - execute_tests_and_analyze_results
+    - execute_lint_and_tests
     - execute_iterative_test_fix_loop
 
 create_github_issues_and_track_progress:
   description: >
-    FIRST: Verify the iterative fix loop completed successfully.
-    THEN: Use GitHub Branch Manager to COMMIT and PUSH all changes from
-    {repo_abs_path} to {branch_name} with a consolidated commit message.
-    NEXT: Create a pull request from {branch_name} to {default_branch}.
-    IMPORTANT: Use the exact URL: {github_repo_url}. Do NOT hallucinate org names.
-    FINALLY: Create GitHub issues for future enhancements identified.
+    STEP 1 — VERIFY CHANGES EXIST:
+      Use bash_execution_tool:
+        cd {repo_abs_path} && git status --porcelain
+        cd {repo_abs_path} && git diff --stat
+        cd {repo_abs_path} && git branch --show-current
+      If no changes AND no unpushed commits → STOP.
+      Report: "No changes to push. Earlier tasks may have failed."
+
+    STEP 2 — COMMIT AND PUSH:
+      Use github_branch_content_manager:
+        operation: "commit_and_push"
+        repository_url: "{github_repo_url}"
+        source_branch: "{branch_name}"
+        commit_message: "feat: implement {requirements} with tests and QA"
+
+    STEP 3 — VERIFY PUSH:
+      Use bash_execution_tool:
+        cd {repo_abs_path} && git log origin/{branch_name}..HEAD --oneline
+      Should show ZERO lines (all pushed).
+
+    STEP 4 — CREATE PULL REQUEST:
+      Use github_branch_content_manager:
+        operation: "create_pr"
+        repository_url: "{github_repo_url}"
+        source_branch: "{branch_name}"
+        target_branch: "{default_branch}"
+        pr_title: "feat: {requirements}"
+        pr_description: "Automated QA pipeline — see QA_REPORT.md for details"
+
+      If PR fails with "no commits between branches":
+        DIAGNOSE:
+        cd {repo_abs_path} && git log origin/{default_branch}..origin/{branch_name} --oneline
+        Report what this shows.
+
+    STEP 5 — CREATE ISSUES (if applicable):
+      Load checkpoint to check for unresolved failures.
+      For each unresolved issue, create a GitHub issue.
+
+    STEP 6 — SAVE CHECKPOINT:
+      phase: "github_complete"
+      data: {{"pr_url": "...", "issues_created": [...]}}
+
   expected_output: >
-    1) Commit and push status, 2) Pull request created with URL,
-    3) GitHub issues created with links, 4) Roadmap for next steps.
+    1) Git status showing changes existed,
+    2) Commit and push result with SHA,
+    3) Push verification (zero unpushed),
+    4) Pull request URL,
+    5) GitHub issues created (if any),
+    6) Final status saved to checkpoint.
   agent: github_integration_specialist
   context:
     - execute_iterative_test_fix_loop

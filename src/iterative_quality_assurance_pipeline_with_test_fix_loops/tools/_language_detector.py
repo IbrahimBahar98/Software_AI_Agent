@@ -147,8 +147,20 @@ TEST_FRAMEWORK_DETECTION = {
         },
         "default_framework": "pytest",
         "linters": {
-            "ruff": {"install": "pip install ruff", "cmd": "ruff check ."},
-            "mypy": {"install": "pip install mypy", "cmd": "mypy . --ignore-missing-imports"},
+            "ruff": {
+                "install": "pip install ruff", 
+                "cmd": "ruff check .",
+                "config_files": ["ruff.toml", ".ruff.toml"],
+                "ignore_files": [".ruffignore"],
+                "ignore_content": "node_modules/\nvenv/\n.venv/\nbuild/\ndist/\n"
+            },
+            "mypy": {
+                "install": "pip install mypy", 
+                "cmd": "mypy . --ignore-missing-imports",
+                "config_files": ["mypy.ini", ".mypy.ini"],
+                "ignore_files": [".mypy_ignore"], # Mypy usually uses config, but we can add this
+                "ignore_content": "node_modules/\n"
+            },
         },
     },
     "javascript": {
@@ -179,7 +191,13 @@ TEST_FRAMEWORK_DETECTION = {
         },
         "default_framework": "jest",
         "linters": {
-            "eslint": {"install": "npm install --save-dev eslint", "cmd": "npx eslint . --ext .js,.jsx --no-error-on-unmatched-pattern"},
+            "eslint": {
+                "install": "npm install --save-dev eslint", 
+                "cmd": "npx eslint . --ext .js,.jsx --no-error-on-unmatched-pattern",
+                "config_files": [".eslintrc.js", ".eslintrc.json", ".eslintrc.yml", ".eslintrc"],
+                "ignore_files": [".eslintignore"],
+                "ignore_content": "node_modules/\ndist/\nbuild/\ncoverage/\n"
+            },
         },
     },
     "typescript": {

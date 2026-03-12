@@ -9,6 +9,7 @@ from datetime import datetime
 import subprocess
 import os
 import time
+import shutil
 from iterative_quality_assurance_pipeline_with_test_fix_loops.config import (
     REPO_DIR, HTTP_REQUEST_TIMEOUT
 )
@@ -261,7 +262,6 @@ class GitHubBranchContentManager(BaseTool):
             # Fresh clone
             if os.path.exists(target_dir):
                 # Back up existing non-git content instead of destroying
-                import shutil
                 backup = f"{target_dir}_backup_{datetime.now().strftime('%H%M%S')}"
                 contents = os.listdir(target_dir) if os.path.isdir(target_dir) else []
                 if contents:

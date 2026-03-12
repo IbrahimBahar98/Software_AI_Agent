@@ -1,4 +1,5 @@
 import os
+import logging
 
 from crewai import LLM
 from crewai import Agent, Crew, Process, Task
@@ -10,11 +11,13 @@ from crewai_tools import FileReadTool
 from iterative_quality_assurance_pipeline_with_test_fix_loops.tools.file_write_tool import FileWriteTool
 from iterative_quality_assurance_pipeline_with_test_fix_loops.tools.patch_apply_tool import PatchApplyTool
 from iterative_quality_assurance_pipeline_with_test_fix_loops.tools.lint_gate_tool import LintGateTool
+from iterative_quality_assurance_pipeline_with_test_fix_loops.tools.dependency_installer_tool import DependencyInstallerTool
 from iterative_quality_assurance_pipeline_with_test_fix_loops.tools.checkpoint_tool import CheckpointTool
 from iterative_quality_assurance_pipeline_with_test_fix_loops.tools.test_coverage_tool import TestCoverageTool
 from iterative_quality_assurance_pipeline_with_test_fix_loops.tools.ci_config_reader_tool import CIConfigReaderTool
 from iterative_quality_assurance_pipeline_with_test_fix_loops.tools.mcp_bridge_tool import MCPBridgeTool
 from iterative_quality_assurance_pipeline_with_test_fix_loops.run_logger import RunLogger
+from iterative_quality_assurance_pipeline_with_test_fix_loops.tools.a2a_tool import A2ATool
 
 from iterative_quality_assurance_pipeline_with_test_fix_loops.config import (
     MODEL_HEAVY, MODEL_LIGHT, DASHSCOPE_BASE_URL,
@@ -23,7 +26,9 @@ from iterative_quality_assurance_pipeline_with_test_fix_loops.config import (
     MAX_FIX_AGENT_TOOL_CALLS
 )
 
-# ── API Key (no hardcoded fallback) ──────────────────────
+logger = logging.getLogger(__name__)
+
+# ── API Key ──────────────────────────────────────────────
 api_key = os.getenv("DASHSCOPE_API_KEY")
 if not api_key:
     raise EnvironmentError(
@@ -125,7 +130,8 @@ class IterativeQualityAssurancePipelineWithTestFixLoopsCrew:
             tools=[
                 FileReadTool(),
                 BashExecutionTool(),
-                FileWriteTool()
+                FileWriteTool(),
+                DependencyInstallerTool()    # Can install test frameworks
             ],
             verbose=True,
             reasoning=False,
@@ -145,7 +151,9 @@ class IterativeQualityAssurancePipelineWithTestFixLoopsCrew:
             tools=[
                 FileReadTool(),
                 BashExecutionTool(),
-                LintGateTool(),
+                FileWriteTool(),             # Can fix lint issues
+                DependencyInstallerTool(),   # Installs linters + configs
+                LintGateTool(),              # Runs linters
                 TestCoverageTool(),
                 MCPBridgeTool()
             ],
@@ -166,7 +174,8 @@ class IterativeQualityAssurancePipelineWithTestFixLoopsCrew:
             config=self.agents_config["qa_report_generator"],
             tools=[
                 FileReadTool(),
-                FileWriteTool()
+                FileWriteTool(),
+                CheckpointTool()
             ],
             verbose=True,
             reasoning=False,
@@ -197,12 +206,6 @@ class IterativeQualityAssurancePipelineWithTestFixLoopsCrew:
             allow_delegation=False,
             max_iter=15,
             max_rpm=None,
-            apps=[
-                "github/create_issue",
-                "github/create_release",
-                "github/get_file",
-                "github/create_pull_request"
-            ],
             max_execution_time=AGENT_TIMEOUT_DEFAULT,
             llm=light_llm
         )
@@ -216,6 +219,8 @@ class IterativeQualityAssurancePipelineWithTestFixLoopsCrew:
                 BashExecutionTool(),
                 FileWriteTool(),
                 PatchApplyTool(),
+                DependencyInstallerTool(),   # Can install missing deps during fix
+                LintGateTool(),              # Can re-lint after fixes
                 TestCoverageTool(),
                 CheckpointTool(),
                 MCPBridgeTool()
@@ -230,8 +235,67 @@ class IterativeQualityAssurancePipelineWithTestFixLoopsCrew:
             max_execution_time=AGENT_TIMEOUT_FIX_LOOP,
             llm=local_llm
         )
+        
+    @agent
+    def repository_analyst_and_task_planner(self) -> Agent:
+        return Agent(
+            config=self.agents_config["repository_analyst_and_task_planner"],
+            tools=[
+                FileReadTool(),
+                BashExecutionTool(),
+                GitHubRepositoryInspector(),
+                GitHubBranchContentManager(),
+                CheckpointTool(),
+                A2ATool(),          # REPLACES MCPBridgeTool for discovery
+            ],
+            verbose=True,
+            reasoning=True,
+            max_reasoning_attempts=3,
+            inject_date=True,
+            allow_delegation=False,
+            max_iter=20,
+            max_execution_time=AGENT_TIMEOUT_ANALYST,
+            llm=local_llm,
+        )
+    
+    @agent
+    def test_execution_specialist(self) -> Agent:
+        return Agent(
+            config=self.agents_config["test_execution_specialist"],
+            tools=[
+                FileReadTool(),
+                BashExecutionTool(),
+                FileWriteTool(),
+                A2ATool(),           # For test-runner and discovery agents
+                CheckpointTool(),
+            ],
+            verbose=True,
+            max_iter=15,
+            max_execution_time=AGENT_TIMEOUT_DEFAULT,
+            llm=local_llm,
+        )
+    
+    @agent
+    def iterative_test_and_fix_specialist(self) -> Agent:
+        return Agent(
+            config=self.agents_config["iterative_test_and_fix_specialist"],
+            tools=[
+                FileReadTool(),
+                BashExecutionTool(),
+                FileWriteTool(),
+                PatchApplyTool(),
+                A2ATool(),            # For test-runner + fixer agents
+                CheckpointTool(),
+            ],
+            verbose=True,
+            reasoning=True,
+            max_reasoning_attempts=3,
+            max_iter=MAX_FIX_AGENT_TOOL_CALLS,
+            max_execution_time=AGENT_TIMEOUT_FIX_LOOP,
+            llm=local_llm,
+        )
 
-    # ── TASKS (ORDER MATTERS for Process.sequential) ──────
+    # ── TASKS ─────────────────────────────────────────────
 
     @task
     def analyze_github_repository_and_create_development_plan(self) -> Task:
@@ -262,20 +326,13 @@ class IterativeQualityAssurancePipelineWithTestFixLoopsCrew:
         )
 
     @task
-    def lint_gate_task(self) -> Task:
+    def execute_lint_and_tests(self) -> Task:
+        """Was: lint_gate_task + execute_tests_and_analyze_results (now merged)."""
         return Task(
-            config=self.tasks_config["lint_gate_task"],
+            config=self.tasks_config["execute_lint_and_tests"],
             markdown=False
         )
 
-    @task
-    def execute_tests_and_analyze_results(self) -> Task:
-        return Task(
-            config=self.tasks_config["execute_tests_and_analyze_results"],
-            markdown=False
-        )
-
-    # ── FIX LOOP BEFORE REPORT ────────────────────────────
     @task
     def execute_iterative_test_fix_loop(self) -> Task:
         return Task(
@@ -301,14 +358,13 @@ class IterativeQualityAssurancePipelineWithTestFixLoopsCrew:
 
     @crew
     def crew(self) -> Crew:
-        """Creates the IterativeQualityAssurancePipelineWithTestFixLoops crew"""
-        cr = Crew(
+        """Creates the crew"""
+        return Crew(
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
             verbose=True,
             function_calling_llm=local_llm,
             task_callback=self.logger.task_callback,
-            step_callback=self.logger.step_callback
+            step_callback=self.logger.step_callback,
         )
-        return cr
